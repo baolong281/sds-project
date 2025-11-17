@@ -1,0 +1,33 @@
+---
+title: "Neil Analysis"
+author: "Neil Sebastian"
+date: "2025-10-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load libraries
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(dplyr)
+```
+
+
+
+```{r}
+#load dataset
+schools <- read.csv("data_teacher_salaries.csv")
+#clean data, removing all NA
+schools <- schools %>%
+  filter(!is.na(AVG_TEACHER_SALARY))
+#find min-max teacher salray
+min(schools$AVG_TEACHER_SALARY)
+max(schools$AVG_TEACHER_SALARY)
+```
+
+```{r}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
