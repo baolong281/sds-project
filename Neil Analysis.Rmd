@@ -27,7 +27,133 @@ max(schools$AVG_TEACHER_SALARY)
 ```
 
 ```{r}
-plot(pressure)
+# ============================================================
+# RANDOM FOREST MODEL – STRATIFIED BY REGION + ENERGY/CO2 TRACKING
+# ============================================================
+
+library(caret)
+library(randomForest)
+library(dplyr)
+set.seed(123)
+
+#---------------------------------------
+# DATA PREP
+#---------------------------------------
+schools$REGION <- as.factor(schools$REGION)
+schools$OVERALL_SCORE <- as.numeric(schools$OVERALL_SCORE)
+
+# Select relevant variables and remove NAs
+schools_model <- schools %>%
+  dplyr::select(
+    OVERALL_SCORE,
+    REGION,
+    X._ECONOMICALLY_DISADVANTAGED,
+    X._EB.EL_STUDENTS,
+    MEDIAN_HOUSEHOLD_INCOME_AREA
+  ) %>%
+  na.omit()
+
+#---------------------------------------
+# STRATIFIED TRAIN/TEST SPLIT BY REGION
+#---------------------------------------
+train_index <- createDataPartition(schools_model$REGION, p = 0.8, list = FALSE)
+train <- schools_model[train_index, ]
+test  <- schools_model[-train_index, ]
+
+#---------------------------------------
+# 5-FOLD STRATIFIED CROSS-VALIDATION (BY REGION)
+#---------------------------------------
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  verboseIter = TRUE,
+  index = createFolds(train$REGION, k = 5, returnTrain = TRUE)
+)
+
+#---------------------------------------
+# HYPERPARAMETER GRID
+#---------------------------------------
+tune_grid <- expand.grid(mtry = c(2, 3, 4))
+
+# ============================================================
+# R-NATIVE ENERGY / CO2 TRACKER FUNCTIONS
+# ============================================================
+track_start <- function() {
+  Sys.time()
+}
+
+track_stop <- function(start_time, power_watts = 45, carbon_intensity = 0.4) {
+  end_time <- Sys.time()
+  runtime_hrs <- as.numeric(difftime(end_time, start_time, units = "secs")) / 3600
+
+  energy_Wh <- power_watts * runtime_hrs
+  energy_kWh <- energy_Wh / 1000
+  co2_kg <- energy_kWh * carbon_intensity
+  co2_g <- co2_kg * 1000
+
+  cat("⏱ Runtime:", round(runtime_hrs * 60, 2), "minutes\n")
+  cat("⚡ Energy consumed:", round(energy_Wh, 2), "Wh\n")
+  cat("🌍 Estimated CO2 emitted:", round(co2_g, 2), "gCO2eq\n")
+
+  list(runtime_hrs = runtime_hrs, energy_Wh = energy_Wh, co2_g = co2_g)
+}
+
+# ============================================================
+# TRAINING PHASE (with CO2 tracking)
+# ============================================================
+train_start <- track_start()
+
+rf_model <- train(
+  OVERALL_SCORE ~ REGION +
+    X._ECONOMICALLY_DISADVANTAGED +
+    X._EB.EL_STUDENTS +
+    MEDIAN_HOUSEHOLD_INCOME_AREA,
+  data = train,
+  method = "rf",
+  trControl = ctrl,
+  tuneGrid = tune_grid,
+  importance = TRUE,
+  ntree = 500
+)
+
+training_impact <- track_stop(train_start)
+
+# ============================================================
+# TESTING PHASE (with CO2 tracking)
+# ============================================================
+test_start <- track_start()
+
+rf_preds <- predict(rf_model, newdata = test)
+rf_rmse <- RMSE(rf_preds, test$OVERALL_SCORE)
+rf_r2   <- R2(rf_preds, test$OVERALL_SCORE)
+
+testing_impact <- track_stop(test_start)
+
+# ============================================================
+# RESULTS + VISUALIZATION
+# ============================================================
+cat("\n✅ Random Forest Results\n")
+cat("RMSE:", rf_rmse, "\n")
+cat("R²:", rf_r2, "\n")
+
+varImpPlot(
+  rf_model$finalModel,
+  main = "Variable Importance (Random Forest)",
+  col = "darkorange"
+)
+
+# Optional energy summary table
+impact_summary <- data.frame(
+  Phase = c("Training", "Testing"),
+  Runtime_min = c(round(training_impact$runtime_hrs * 60, 2),
+                  round(testing_impact$runtime_hrs * 60, 2)),
+  Energy_Wh = c(round(training_impact$energy_Wh, 2),
+                round(testing_impact$energy_Wh, 2)),
+  CO2_g = c(round(training_impact$co2_g, 2),
+            round(testing_impact$co2_g, 2))
+)
+print(impact_summary)
+
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
